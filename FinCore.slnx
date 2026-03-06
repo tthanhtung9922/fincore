@@ -1,0 +1,26 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/services/" />
+  <Folder Name="/src/services/FinCore.Accounts/">
+    <Project Path="src/services/FinCore.Accounts/FinCore.Accounts.Api/FinCore.Accounts.Api.csproj" />
+    <Project Path="src/services/FinCore.Accounts/FinCore.Accounts.Application/FinCore.Accounts.Application.csproj" />
+    <Project Path="src/services/FinCore.Accounts/FinCore.Accounts.Domain/FinCore.Accounts.Domain.csproj" />
+    <Project Path="src/services/FinCore.Accounts/FinCore.Accounts.Infrastructure/FinCore.Accounts.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/services/FinCore.Identity/">
+    <Project Path="src/services/FinCore.Identity/FinCore.Identity.Api/FinCore.Identity.Api.csproj" />
+    <Project Path="src/services/FinCore.Identity/FinCore.Identity.Application/FinCore.Identity.Application.csproj" />
+    <Project Path="src/services/FinCore.Identity/FinCore.Identity.Domain/FinCore.Identity.Domain.csproj" />
+    <Project Path="src/services/FinCore.Identity/FinCore.Identity.Infrastructure/FinCore.Identity.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/shared/">
+    <Project Path="src/shared/FinCore.EventBus.Abstractions/FinCore.EventBus.Abstractions.csproj" />
+    <Project Path="src/shared/FinCore.Observability/FinCore.Observability.csproj" />
+    <Project Path="src/shared/FinCore.SharedKernel/FinCore.SharedKernel.csproj" />
+  </Folder>
+  <Folder Name="/tests/" />
+  <Folder Name="/tests/unit/">
+    <Project Path="tests/unit/FinCore.Accounts.Domain.Tests/FinCore.Accounts.Domain.Tests.csproj" />
+    <Project Path="tests/unit/FinCore.Identity.Domain.Tests/FinCore.Identity.Domain.Tests.csproj" />
+  </Folder>
+</Solution>

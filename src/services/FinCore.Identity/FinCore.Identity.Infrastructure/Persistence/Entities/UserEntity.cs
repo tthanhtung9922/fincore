@@ -1,0 +1,13 @@
+namespace FinCore.Identity.Infrastructure.Persistence.Entities;
+
+public class UserEntity
+{
+    public Guid Id { get; set; }
+    public string Email { get; set; } = string.Empty;
+    public string PasswordHash { get; set; } = string.Empty;
+    public string Role { get; set; } = string.Empty;
+    public bool IsActive { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public long Version { get; set; }
+    public List<RefreshTokenEntity> RefreshTokens { get; set; } = new();
+}

@@ -1,0 +1,28 @@
+using FinCore.Accounts.Domain.Repositories;
+using FinCore.SharedKernel.Common;
+using MediatR;
+
+namespace FinCore.Accounts.Application.Commands.CloseAccount;
+
+public class CloseAccountCommandHandler : IRequestHandler<CloseAccountCommand, Result>
+{
+    private readonly IAccountRepository _repository;
+
+    public CloseAccountCommandHandler(IAccountRepository repository)
+    {
+        _repository = repository;
+    }
+
+    public async Task<Result> Handle(CloseAccountCommand request, CancellationToken cancellationToken)
+    {
+        var account = await _repository.GetByIdAsync(request.AccountId, cancellationToken);
+        if (account is null)
+            return Result.Failure("Account not found.");
+
+        account.Close();
+        await _repository.UpdateAsync(account, cancellationToken);
+        account.ClearDomainEvents();
+
+        return Result.Success();
+    }
+}
