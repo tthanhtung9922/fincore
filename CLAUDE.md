@@ -63,6 +63,7 @@ dotnet ef migrations add <MigrationName> --project src/services/FinCore.Accounts
 | OpenTelemetry | 1.15.0 |
 | BCrypt.Net-Next | 4.1.0 |
 | Scalar.AspNetCore | latest |
+| xUnit + FluentAssertions + Moq + Bogus | (test projects) |
 
 ## Environment Variables
 
@@ -85,7 +86,7 @@ DB__ACCOUNTS=Host=localhost;Port=5433;Database=fincore_accounts;Username=fincore
 OBSERVABILITY__SEQ_URL=http://localhost:5341
 ```
 
-Dev fallbacks are hardcoded in the Infrastructure `AddXxxInfrastructure()` extension methods so local runs work without setting any env vars.
+Dev fallbacks are hardcoded in the Infrastructure `AddXxxInfrastructure()` extension methods so local runs work without setting any env vars. Seq UI is available at `http://localhost:8080`.
 
 ## Architecture
 
@@ -138,23 +139,40 @@ Each microservice has four layers with strict dependency direction:
 
 ### Core Patterns (Phase 1 implementation)
 
-**DDD Aggregates** — `Account` and `User` are aggregate roots. All state changes go through domain methods (`account.Deposit(...)`, `user.Login()`). Methods raise domain events via `RaiseEvent()`. The `Apply()` switch updates internal state from the event data (single source of truth, testable without the DB).
+**DDD Aggregates** — `Account` and `User` are aggregate roots. All state changes go through domain methods (`account.Deposit(...)`, `user.Login()`). Methods raise domain events via `RaiseEvent()`. The `Apply()` switch updates internal state from the event data (single source of truth, testable without the DB). Factory methods (`Account.Open()`, `User.Register()`) replace public constructors.
 
-**Value Objects** — `Money`, `Email`, `AccountNumber`, `HashedPassword` are immutable; equality is by value not reference. They validate their invariants on construction and throw `DomainException` if invalid.
+**Value Objects** — `Money`, `Email`, `AccountNumber`, `HashedPassword` are immutable sealed classes with protected constructors; equality is by value not reference (`GetEqualityComponents()` override). They validate their invariants on construction and throw `DomainException` if invalid.
 
-**CQRS** — Commands mutate state (load aggregate → call domain method → save → return `Result`). Queries bypass the aggregate entirely and project directly from the EF read model into DTOs (`AccountReadRepository` uses `Select()` to project without loading the full entity graph).
+**CQRS** — Commands mutate state (load aggregate → call domain method → save → return `Result`). Queries bypass the aggregate entirely and project directly from the EF read model into DTOs (`AccountReadRepository` uses `Select()` to project without loading the full entity graph). Each service has separate `IXxxRepository` (write) and `IXxxReadRepository` (read) interfaces.
+
+**CQRS File Layout** — One folder per command/query under `Application/Commands/` or `Application/Queries/`, each containing:
+- `XxxCommand.cs` — `record XxxCommand(...) : IRequest<Result<T>>`
+- `XxxCommandHandler.cs` — `IRequestHandler<XxxCommand, Result<T>>`
+- `XxxCommandValidator.cs` — `AbstractValidator<XxxCommand>` (commands only)
 
 **Result pattern** — `Result<T>` / `Result` express success or failure without exceptions crossing the Application→Api boundary. Domain exceptions are caught by `ExceptionHandlingMiddleware` and mapped to 4xx responses.
 
-**JWT authentication** — HS256 tokens signed with `JWT__SECRET`. Claims: `sub` (userId), `email`, `role`, `jti`. Refresh tokens are opaque random strings stored as SHA-256 hashes. Access tokens expire in 15 min; refresh tokens in 7 days.
+**JWT authentication** — HS256 tokens signed with `JWT__SECRET`. Claims: `sub` (userId), `email`, `role`, `jti`. Refresh tokens are opaque random strings stored as SHA-256 hashes. Access tokens expire in 15 min; refresh tokens in 7 days. The Accounts service validates tokens issued by Identity using the shared secret.
+
+**ABAC in Controllers** — Customers may only access their own resources. Controllers extract `OwnerId` from the JWT `sub` claim and compare with the resource's owner; Admin/Analyst roles bypass this check.
 
 **Structured logging** — Serilog enriches every log line with `ServiceName`, `MachineName`, `ThreadId`, and `CorrelationId` (from `X-Correlation-Id` header or auto-generated). Writes to console + Seq.
+
+**Health checks** — `/health/live` (liveness) and `/health/ready` (checks PostgreSQL connectivity).
+
+### EF Core Entity Mapping
+
+Value objects and enums are **flattened** into EF entity classes (e.g., `Money` → `BalanceAmount` + `BalanceCurrency` columns; enums stored as strings). Entity configurations live in one `IEntityTypeConfiguration<T>` class per entity, auto-discovered by `ApplyConfigurationsFromAssembly()`. Aggregate `Version` is used as an optimistic concurrency token.
 
 ### Aggregate Reconstitution from DB
 
 `EfAccountRepository` uses `RuntimeHelpers.GetUninitializedObject(typeof(Account))` to create an Account instance without calling any constructor, then populates properties via reflection. The `_domainEvents` private list in `AggregateRoot` must be explicitly initialized via reflection after this call — otherwise any subsequent domain method that calls `RaiseEvent()` will throw `NullReferenceException`.
 
 `EfUserRepository` uses `User.Register()` (real constructor chain) and then overwrites `Id` via reflection to avoid the need for `GetUninitializedObject`.
+
+### Domain Events & Event Bus
+
+Command handlers call `aggregate.ClearDomainEvents()` after saving. This is intentional — Phase 2 will introduce the Outbox pattern to publish events reliably. `IEventBus` is currently a `NoOpEventBus` (no-op publish). Do not change this pattern prematurely.
 
 ### Security Conventions
 
@@ -167,9 +185,15 @@ Each microservice has four layers with strict dependency direction:
 
 - REST only (no gRPC, no Kafka yet — planned Phase 2+)
 - Correlation ID propagated via `X-Correlation-Id` header
+- No FK constraints between services — Accounts has no DB-level reference to Identity (cross-service data matched by ID in application layer)
 
 ### Testing Conventions
 
 - **Unit tests** — domain layer only; no mocks needed because aggregates are pure functions of events. Test by calling domain methods and asserting `DomainEvents` and property state.
+- **Assertion style** — FluentAssertions: `result.Should().Be(...)`, `act.Should().Throw<DomainException>()`
 - **Integration tests** — planned Phase 2 (Testcontainers)
 - **Test data** — inline in tests; Bogus (Faker) to be added in Phase 2
+
+### Phase 2 Roadmap (what comes next)
+
+Phase 2 adds event-driven infrastructure: Kafka integration (replacing `NoOpEventBus`), Outbox pattern (reliable event publishing), a new Ledger service (fully event-sourced), Redis read projections, and OpenTelemetry → Jaeger export. Later phases add data lake, resilience (Polly), field-level encryption, YARP gateway, saga orchestration, Prometheus/Grafana, and Kubernetes.
